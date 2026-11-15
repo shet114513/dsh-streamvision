@@ -1,0 +1,4 @@
+# dsh-streamvision 的 bundle patch —— 把连续视觉插件挂进 DSH 配置树
+- insert:
+    - id: dsh-streamvision
+      name: 'dsh-streamvision'
