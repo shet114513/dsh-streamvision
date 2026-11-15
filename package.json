@@ -1,0 +1,35 @@
+{
+  "name": "dsh-streamvision",
+  "version": "0.2.1",
+  "private": false,
+  "type": "module",
+  "description": "Continuous screen capture with block-level differencing, gated events, scene/peak extraction, a caption channel and a capacity-limited working memory, so an agent can see change over time instead of single screenshots.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "streaming-vision",
+    "screen-capture",
+    "frame-diff",
+    "agent"
+  ],
+  "license": "MIT",
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "sv_daemon.mjs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "koffi": "^3.3.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
