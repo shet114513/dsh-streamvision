@@ -1,6 +1,6 @@
 {
   "name": "dsh-streamvision",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": false,
   "type": "module",
   "description": "Continuous screen capture with block-level differencing, gated events, scene/peak extraction, a caption channel and a capacity-limited working memory, so an agent can see change over time instead of single screenshots.",
