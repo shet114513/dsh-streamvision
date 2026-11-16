@@ -39,7 +39,27 @@ const recentTimes = []
 let lastRgb = null
 let ev = null // 当前正在积累的事件
 let lastEventEnd = 0
-let seq = 0
+let frameSeq = 0 // 只给帧文件名（dump 用）
+let eventSeq = 0 // 事件 id：单调递增，motion 与 caption 共用
+let nMotion = 0
+let nCaption = 0
+
+// 事件 id 跨进程续号：events.jsonl 是追加写、多天共用，重启后不能从 1 重来，
+// 否则 sv_events --sinceId 会把老事件当成新的重读。
+try {
+  const seen = fs.readFileSync(EVENTS, 'utf8')
+  for (const line of seen.split('\n')) {
+    if (!line) continue
+    try {
+      const r = JSON.parse(line)
+      if (Number.isFinite(r.id) && r.id > eventSeq) eventSeq = r.id
+    } catch {
+      /* 坏行跳过 */
+    }
+  }
+} catch {
+  /* 还没有事件文件，从 0 开始 */
+}
 
 // 每 captionMs 采一次底部字幕带：aHash 相同就跳过，OCR 文本也相同就不记；
 // 只有文本真的变了才落一条 {type:'caption'}，和画面事件写同一个队列。
@@ -48,7 +68,6 @@ const captionMs = Number(arg('captionMs', 1200))
 let capState = { lastHash: '', lastText: '' }
 let capFrames = 0
 let capOcr = 0
-let capSeq = 0
 
 async function captionTick() {
   if (!captionsOn) return
@@ -72,15 +91,15 @@ async function captionTick() {
   capState.lastText = res.text
   const now = Date.now()
   const rec = {
-    id: ++capSeq,
+    id: ++eventSeq,
     type: 'caption',
     source: 'ocr',
     text: res.text,
     t: Math.round(now / 1000),
     durMs: captionMs,
   }
-  rec.type = rec.type || 'motion'
   fs.appendFileSync(EVENTS, JSON.stringify(rec) + '\n', 'utf8')
+  nCaption++
   if (inject) {
     const line = { prompt: `【screenvision 字幕】${res.text.slice(0, 160)}` }
     fs.appendFileSync(INBOX, JSON.stringify(line) + '\n', 'utf8')
@@ -104,7 +123,7 @@ function gate() {
 }
 
 function dump(rgb, w, h) {
-  const p = path.join(FRAMES, `ev_${String(++seq).padStart(3, '0')}_${Date.now()}.png`)
+  const p = path.join(FRAMES, `ev_${String(++frameSeq).padStart(3, '0')}_${Date.now()}.png`)
   fs.writeFileSync(p, encodePng({ width: w, height: h, rgb }))
   return p
 }
@@ -123,7 +142,8 @@ function emitEvent() {
     return
   }
   const rec = {
-    id: seq,
+    id: ++eventSeq,
+    type: 'motion',
     t: +(now - t0) / 1000,
     at: new Date(now).toISOString(),
     durMs: ev.end - ev.start,
@@ -133,8 +153,8 @@ function emitEvent() {
     frame: ev.shot || null,
     window: windowTitle,
   }
-  rec.type = rec.type || 'motion'
   fs.appendFileSync(EVENTS, JSON.stringify(rec) + '\n', 'utf8')
+  nMotion++
   lastEventEnd = now
   if (inject) {
     const text =
@@ -194,4 +214,15 @@ while (Date.now() < end) {
   if (rest > 0) await new Promise((res) => setTimeout(res, rest))
 }
 emitEvent()
-console.log(JSON.stringify({ done: true, frames, gate: +gate().toFixed(1), events: seq }))
+console.log(
+  JSON.stringify({
+    done: true,
+    frames,
+    gate: +gate().toFixed(1),
+    events: nMotion + nCaption,
+    lastId: eventSeq,
+    motion: nMotion,
+    captions: nCaption,
+    framesSaved: frameSeq,
+  }),
+)
