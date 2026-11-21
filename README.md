@@ -15,6 +15,21 @@ channel (band-split OCR, no subtitle-band selection).
 Small and dependency-light: Win32 GDI through [koffi](https://www.npmjs.com/package/koffi), a hand-written
 PNG encoder, and the OCR engine shipped with Windows. No Python, no model weights, no network.
 
+## What's new in 0.2.8
+
+- **Non-ASCII install paths fixed (blocking)** — `lib/pipeline.js` computed `ROOT` from
+  `new URL(import.meta.url).pathname`, which keeps percent-encoding: with a Chinese (or any non-ASCII)
+  Windows user name, `data/samples` could not be created and `sv_arm` reported `armed: true` while
+  `events.jsonl` never appeared. It now uses `fileURLToPath`, like the other three modules.
+- **Failures are no longer silent** — sampling and event-append exceptions are recorded in
+  `ARMED.lastError` and exposed by `sv_info` / `sv_arm({action:'status'})`; 10 consecutive failures stop
+  the watcher with `stopReason: "error"`. `sv_events` now tells the three empty cases apart:
+  not armed / armed but nothing changed / last arm failed.
+- **Local-change detector** — besides the whole-frame HSV score (diluted on chat/document screens) and
+  the busiest 8×6 block, an **area** criterion counts the share of pixels that changed noticeably.
+  Default `areaCut: 0.004` (0.4%): a one-line document edit is ~0.4%–1%, a static screen is <0.1%,
+  a full-screen animation is tens of percent. Events now carry `local` and `area`.
+
 ## What's new in 0.2.7
 
 - **Event stream** — each event now carries `edgeDensity` (share of blocks with a strong neighbour
@@ -71,6 +86,23 @@ sv_events({ wait: 60, sinceId: lastId })   // returns as soon as something lands
 Long-poll instead of injecting a message per event: an injected message starts a new turn, and a new turn
 means re-reading the context — slower and far more expensive than staying in the same turn.
 
+### Detector sensitivity
+
+Three criteria are OR-ed; an event fires if **any** of them passes:
+
+| parameter | default | catches |
+|---|---|---|
+| `cutAbs` | 12 | whole-frame change — scene cuts, scrolling, video motion |
+| `localCut` | 12 | one 8×6 block changing a lot (a small dialog, a HUD element) |
+| `areaCut` | 0.004 | share of pixels changed noticeably — **a one-line edit in a document or chat** |
+
+Tuning: static screens that never fire → lower `areaCut` to `0.002`. Too many events on a busy screen →
+raise `areaCut` toward `0.02`.
+Noisy video that fires constantly → `areaCut: 0.03`, `cutAbs: 20`, and a longer `cooldownMs`. If you want
+the old block-mean behaviour instead, pass `score: 'blocks', threshold: 4`.
+Events echo all three numbers (`score`, `local`, `area` in percent), so you can tune from the stream
+itself instead of guessing.
+
 ## Daemon
 
 `sv_daemon.mjs` runs the same pipeline outside the agent loop:
@@ -92,6 +124,11 @@ hot-reloaded).
 ## Notes
 
 - Windows only (Win32 GDI + Windows.Media.Ocr).
+- **Text stream accuracy**: the bundled Windows OCR is stable but not accurate for Chinese — a line is
+  only admitted after being seen twice, so a *consistently misread* line still enters the stream
+  ("安装" → "女装", "目录" → "d i rectO"). Treat `sv_text` as a hint, not as the source of truth, and
+  prefer picture reads (`sv_frame` / `sv_blocks`) when the exact wording matters. For better Chinese,
+  plug a real engine through `SV_OCR_CMD` / `data/ocr.json` (PaddleOCR, RapidOCR, PP-OCR).
 - The process must be DPI-aware; the plugin calls `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)` on load.
 - Capture reads screen pixels: a window that is not in front gets whatever covers it.
 - Sampling only. Input and window control deliberately live elsewhere.
